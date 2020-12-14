@@ -15,14 +15,19 @@ var app = new Vue({
                 cuisine: [],
                 borough: [],
                 zipcode: [],
+                source: [],
             },
             all: {
                 cuisine: [],
                 borough: [],
                 zipcode: [],
+                source: [],
                 restaurants: [],
             },
             restaurantsCount: '',
+            defaultsBrandAlpha: '',
+            defaultsOriginalPrimaryKey: '',
+            defaultsPrimaryCategoryId: '',
         };
     },
     computed: {
@@ -38,6 +43,8 @@ var app = new Vue({
         selectedFilters: function() {
             return []
                 .concat(
+                    this.selected.source.map(function(value){return {value: value, type: 'source', icon: 'cutlery'};})
+                ).concat(
                     this.selected.cuisine.map(function(value){return {value: value, type: 'cuisine', icon: 'cutlery'};})
                 ).concat(
                     this.selected.borough.map(function(value){return {value: value, type: 'borough', icon: 'building'};})
@@ -100,6 +107,7 @@ var app = new Vue({
             this.selected.cuisine = [];
             this.selected.borough = [];
             this.selected.zipcode = [];
+            this.selected.source = [];
             this.page = 0;
             this.fetchRestaurants();
             this.fetchFacets();
@@ -113,6 +121,7 @@ var app = new Vue({
                     boroughs: this.selected.borough.join(','),
                     cuisines: this.selected.cuisine.join(','),
                     zipcodes: this.selected.zipcode.join(','),
+                    sources: this.selected.source.join(','),
                 }
             };
             if (this.page <= 0) delete options.params.page;
@@ -120,6 +129,7 @@ var app = new Vue({
             if (!options.params.boroughs) delete options.params.boroughs;
             if (!options.params.cuisines) delete options.params.cuisines;
             if (!options.params.zipcodes) delete options.params.zipcodes;
+            if (!options.params.sources) delete options.params.sources;
             return options;
         },
         fetchRestaurants: function() {
@@ -128,6 +138,9 @@ var app = new Vue({
             return axios.get(API_ENDPOINT + '/restaurants', options).then(function(response) {
                 self.all.restaurants = response.data.restaurants;
                 self.restaurantsCount = response.data.count;
+                self.defaultsBrandAlpha = response.data.defaultsBrandAlpha;
+                self.defaultsOriginalPrimaryKey = response.data.defaultsOriginalPrimaryKey;
+                self.defaultsPrimaryCategoryId = response.data.defaultsPrimaryCategoryId;
             });
         },
         fetchFacets: function() {
@@ -138,15 +151,19 @@ var app = new Vue({
             return axios.get(API_ENDPOINT + '/restaurants/facets', options).then(function(response) {
                 self.all.borough = _getOrderedFacets(
                     self.selected.borough,
-                    response.data.borough
+                    response.data.brands
                 );
                 self.all.cuisine = _getOrderedFacets(
                     self.selected.cuisine,
-                    response.data.cuisine
+                    response.data.primaryCategoryIds
                 );
                 self.all.zipcode = _getOrderedFacets(
                     self.selected.zipcode,
-                    response.data.zipcode
+                    response.data.secondaryCategoryId
+                );
+                self.all.sources = _getOrderedFacets(
+                    self.selected.source,
+                    response.data.sources
                 );
             });
         },

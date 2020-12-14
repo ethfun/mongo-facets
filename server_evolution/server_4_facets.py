@@ -1,13 +1,21 @@
 from flask import Flask, request, jsonify
 from pymongo import MongoClient
+import re
 
 app = Flask(__name__, static_folder='../client')
-client = MongoClient('localhost:27017')
-db = client.test
+# PRO
+client = MongoClient(host="localhost", port=27017)
+db_auth = client.admin
+db_auth.authenticate("admin", "secret")
+
+db = client.opendata
 API_ENDPOINT = '/api/v1'
 
 def _get_array_param(param):
-    return filter(None, param.split(","))
+    return list(filter(None, param.split(",")))
+
+def _get_re_array_param(params):
+    return [re.compile('.*' + param + '.*') for param in filter(None, params.split(","))]
 
 # API
 @app.route(API_ENDPOINT + "/restaurants")
@@ -20,36 +28,52 @@ def restaurants():
 
     # filters
     search = request.args.get('search', '')
-    boroughs = _get_array_param(request.args.get('boroughs', ''))
-    cuisines = _get_array_param(request.args.get('cuisines', ''))
-    zipcode = _get_array_param(request.args.get('zipcodes', ''))
+    brands = _get_array_param(request.args.get('boroughs', ''))
+    primary_category_ids = _get_array_param(request.args.get('cuisines', ''))
+    secondary_category_ids = _get_array_param(request.args.get('zipcodes', ''))
+    sources = _get_re_array_param(request.args.get('sources', ''))
 
     find = {}
     if search:
         find['$text'] = {'$search': search}
-    if boroughs:
-        find['borough'] = {'$in': boroughs}
-    if cuisines:
-        find['cuisine'] = {'$in': cuisines}
-    if zipcode:
-        find['address.zipcode'] = {'$in': zipcode}
+    if sources:
+        # boroughs
+        find['data.original_primary_key'] = {'$in': sources}
+    if brands:
+        # boroughs
+        find['data.brand_alpha'] = {'$in': brands}
+    if primary_category_ids:
+        # cuisines
+        find['data.primary_category_id'] = {'$in': primary_category_ids}
+    if secondary_category_ids:
+        # address.zipcode
+        find['data.secondary_category_id'] = {'$in': secondary_category_ids}
 
+    print(find)
     response = {
-        'restaurants': list(db.restaurants.find(find).skip(skip).limit(limit)),
-        'count': db.restaurants.find(find).count()
+        'restaurants': list(db.product.find(find).skip(skip).limit(limit)),
+        'count': db.product.find(find).count(),
+        'defaultsBrandAlpha': omit_field_count('data.brand_alpha'),
+        'defaultsOriginalPrimaryKey': omit_field_count('data.original_primary_key'),
+        'defaultsPrimaryCategoryId': omit_field_count('data.primary_category_id')
     }
 
     for restaurant in response['restaurants']: # remove _id, is an ObjectId and is not serializable
         del restaurant['_id']
     return jsonify(response)
 
+def omit_field_count (field):
+    body = {field: {'$exists': False}}
+    return db.product.count(body)
+
 @app.route(API_ENDPOINT + "/restaurants/facets")
 def restaurant_facets():
     # filters
     search = request.args.get('search', '')
-    boroughs = _get_array_param(request.args.get('boroughs', ''))
-    cuisines = _get_array_param(request.args.get('cuisines', ''))
-    zipcodes = _get_array_param(request.args.get('zipcodes', ''))
+    brands = _get_array_param(request.args.get('boroughs', ''))
+    primary_category_ids = _get_array_param(request.args.get('cuisines', ''))
+    secondary_category_ids = _get_array_param(request.args.get('zipcodes', ''))
+    sources = _get_re_array_param(request.args.get('sources', ''))
 
     pipeline = [{
         '$match': {'$text': {'$search': search}}
@@ -57,85 +81,173 @@ def restaurant_facets():
 
     pipeline += [{
         '$facet': {
-            'borough': _get_facet_borough_pipeline(cuisines, zipcodes),
-            'cuisine': _get_facet_cuisine_pipeline(boroughs, zipcodes),
-            'zipcode': _get_facet_zipcode_pipeline(boroughs, cuisines),
+            'sources': _get_facet_source_pipeline(brands, primary_category_ids, secondary_category_ids),
+            'brands': _get_facet_brand_pipeline(sources, primary_category_ids, secondary_category_ids),
+            'primaryCategoryIds': _get_facet_primary_category_pipeline(sources, brands, secondary_category_ids),
+            'secondaryCategoryId': _get_facet_secondary_category_pipeline(sources, brands, primary_category_ids),
         }
     }]
 
-    restaurant_facets = list(db.restaurants.aggregate(pipeline))[0]
+    print(pipeline)
+    restaurant_facets = list(db.product.aggregate(pipeline))[0]
 
     return jsonify(restaurant_facets)
 
-def _get_facet_borough_pipeline(cuisines, zipcodes):
+def _get_facet_source_pipeline(brands, primary_category_ids, secondary_category_ids):
     match = {}
 
-    if cuisines:
-        match['cuisine'] = {'$in': cuisines}
-    if zipcodes:
-        match['address.zipcode'] = {'$in': zipcodes}
+    if brands:
+        match['data.brand_alpha'] = {'$in': brands}
+    if primary_category_ids:
+        match['data.primary_category_id'] = {'$in': primary_category_ids}
+    if secondary_category_ids:
+        match['data.secondary_category_id'] = {'$in': secondary_category_ids}
 
     pipeline = [
         {'$match': match}
     ] if match else []
 
-    return pipeline + _get_group_pipeline('borough')
+    return pipeline + _get_group_pipeline('data.original_primary_key')
 
-def _get_facet_cuisine_pipeline(boroughs, zipcodes):
+def _get_facet_brand_pipeline(sources, primary_category_ids, secondary_category_ids):
     match = {}
 
-    if boroughs:
-        match['borough'] = {'$in': boroughs}
-    if zipcodes:
-        match['address.zipcode'] = {'$in': zipcodes}
+    if sources:
+        match['data.original_primary_key'] = {'$in': sources}
+    if primary_category_ids:
+        match['data.primary_category_id'] = {'$in': primary_category_ids}
+    if secondary_category_ids:
+        match['data.secondary_category_id'] = {'$in': secondary_category_ids}
 
     pipeline = [
         {'$match': match}
     ] if match else []
 
-    return pipeline + _get_group_pipeline('cuisine')
+    return pipeline + _get_group_pipeline('data.brand_alpha')
 
-def _get_facet_zipcode_pipeline(boroughs, cuisines):
+def _get_facet_primary_category_pipeline(sources, brands, secondary_category_ids):
     match = {}
 
-    if boroughs:
-        match['borough'] = {'$in': boroughs}
-    if cuisines:
-        match['cuisine'] = {'$in': cuisines}
+    if sources:
+        match['data.original_primary_key'] = {'$in': sources}
+    if brands:
+        match['data.brand_alpha'] = {'$in': brands}
+    if secondary_category_ids:
+        match['data.secondary_category_id'] = {'$in': secondary_category_ids}
+
+    pipeline = [
+        {'$match': match}
+    ] if match else []
+
+    # return pipeline + _get_group_pipeline('cuisine')
+    return pipeline + _get_group_pipeline('data.primary_category_id')
+
+
+def _get_facet_secondary_category_pipeline(sources, brands, primary_category_ids):
+    match = {}
+
+    if sources:
+        match['data.original_primary_key'] = {'$in': sources}
+    if brands:
+        match['data.brand_alpha'] = {'$in': brands}
+    if primary_category_ids:
+        match['data.primary_category_id'] = {'$in': primary_category_ids}
 
     pipeline = [
         {'$match': match},
     ] if match else []
 
-    return pipeline + _get_group_pipeline('address.zipcode')
+    return pipeline + _get_group_pipeline('data.secondary_category_id')
 
 def _get_group_pipeline(group_by):
-    return [
-        {
-            '$group': {
-                '_id': '$' + group_by,
-                'count': {'$sum': 1},
+    if group_by == 'data.original_primary_key':
+        return [
+            {"$project": {
+                'original_primary_key': {"$split": ['$' +group_by, ":"]}
+            }},
+            {"$project": {
+                # Specifies the inclusion of a field. <1 or true>
+                "original_primary_key": 1,
+                # 然后使用$arrayElemAt获得$original_primary_key的地区数组中第一个元素，命名为 source
+                "source": {
+                    "$arrayElemAt": ["$original_primary_key", 0]
+                }}
+            },
+            {
+                '$group': {
+                    '_id': '$source',
+                    'count': {'$sum': 1},
+                }
+            },
+            {
+                '$project': {
+                    '_id': 0,
+                    'value': '$_id',
+                    'count': 1,
+                }
+            },
+            {
+                '$sort': {'count': -1}
+            },
+            {
+                '$limit': 6,
             }
-        },
-        {
-            '$project': {
-                '_id': 0,
-                'value': '$_id',
-                'count': 1,
+        ]
+    elif group_by == 'data.primary_category_id' or group_by == 'data.secondary_category_id':
+        return [
+            {
+                '$group': {
+                    '_id': {'id': '$' + group_by,
+                            'name': '$' + group_by.replace('_id', ''),
+                            },
+                    'count': {'$sum': 1},
+                }
+            },
+            {
+                '$project': {
+                    '_id': 0,
+                    'value': '$_id',
+                    'count': 1,
+                }
+            },
+            {
+                '$sort': {'count': -1}
+            },
+            {
+                '$limit': 6,
             }
-        },
-        {
-            '$sort': {'count': -1}
-        },
-        {
-            '$limit': 6,
-        }
-    ]
+        ]
+    else:
+        return [
+            {
+                '$group': {
+                    '_id': '$' + group_by,
+                    'count': {'$sum': 1},
+                }
+            },
+            {
+                '$project': {
+                    '_id': 0,
+                    'value': '$_id',
+                    'count': 1,
+                }
+            },
+            {
+                '$sort': {'count': -1}
+            },
+            {
+                '$limit': 6,
+            }
+        ]
 
 # Statics
 @app.route('/')
 def root():
   return app.send_static_file('index.html')
+
+@app.route('/go/chart')
+def chart():
+  return app.send_static_file('stats.html')
 
 @app.route('/<path:path>')
 def static_proxy(path):

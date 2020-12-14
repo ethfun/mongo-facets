@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>La cuchara</title>
+    <title>Product Facets</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -16,7 +16,12 @@
       <div>
         <div class="page-title">
             <img src="logo.png" class="logo" alt="forl and spoon crossed">
-            <h2>La cuchara. Searching in {{ restaurantsCount }} restaurants.</h2>
+            <h2>Searching in {{ restaurantsCount }} Standard Product.</h2>
+        </div>
+        <div class="page-title">
+            <p>Without [primary_origin_key] count is  [{{ defaultsOriginalPrimaryKey }}] .<br/></p>
+            <p>Without [brand_alpha] count is  [{{ defaultsBrandAlpha }}] .</p>
+            <p>Without [primary_category_id] count is  [{{ defaultsPrimaryCategoryId }}] .</p>
         </div>
 
         <div class="selected-facets" :style="{visibility: selectedFilters.length ? '' : 'hidden'}">
@@ -29,7 +34,7 @@
         </div>
 
         <div class="restaurants-navigation">
-          <h3>NYC Restaurants</h3>
+          <h3>Product Facets</h3>
           <span>
             <input type="text" class="searchbox" placeholder="search" v-model="search">
           </span>
@@ -43,20 +48,19 @@
         <div class="content">
 
           <div class="restaurant-facets">
-
             <div class="list-facet">
-              <div><i class="fa fa-cutlery" aria-hidden="true"></i><b> Cuisine</b></div>
+              <div><!--<i class="fa fa-building" aria-hidden="true"></i>--><b>SOURCE</b></div>
               <div
-                v-for="facet in all.cuisine"
+                v-for="facet in all.sources"
                 class="facet-item text-clickable"
-                :class="{selected: isFacetSelected(facet.value, 'cuisine')}"
-                @click="facetClicked(facet.value, 'cuisine')">
+                :class="{selected: isFacetSelected(facet.value, 'source')}"
+                @click="facetClicked(facet.value, 'source')">
                 {{ facet.value + ' (' + facet.count + ')' }}
               </div>
             </div>
 
             <div class="list-facet">
-              <div><i class="fa fa-building" aria-hidden="true"></i><b> Borough</b></div>
+              <div><!--<i class="fa fa-building" aria-hidden="true"></i>--><b>品牌</b></div>
               <div
                 v-for="facet in all.borough"
                 class="facet-item text-clickable"
@@ -67,29 +71,38 @@
             </div>
 
             <div class="list-facet">
-              <div><i class="fa fa-map-marker" aria-hidden="true"></i><b> Zipcode</b></div>
+              <div><!--<i class="fa fa-cutlery" aria-hidden="true"></i>--><b>一级品类</b></div>
+              <div
+                v-for="facet in all.cuisine"
+                class="facet-item text-clickable"
+                :class="{selected: isFacetSelected(facet.value, 'cuisine')}"
+                @click="facetClicked(facet.value.id, 'cuisine')">
+                {{ facet.value.name + ' (' + facet.count + ')' }}
+              </div>
+            </div>
+
+
+            <div class="list-facet">
+              <div><!--<i class="fa fa-map-marker" aria-hidden="true"></i>--><b>二级品类</b></div>
               <div
                 v-for="facet in all.zipcode"
                 class="facet-item text-clickable"
                 :class="{selected: isFacetSelected(facet.value, 'zipcode')}"
-                @click="facetClicked(facet.value, 'zipcode')">
-                {{ facet.value + ' (' + facet.count + ')' }}
+                @click="facetClicked(facet.value.id, 'zipcode')">
+                {{ facet.value.name + ' (' + facet.count + ')' }}
               </div>
             </div>
 
           </div>
 
           <div class="restaurants-list">
-            <div v-for="restaurant in all.restaurants" class="restaurant-card">
-              <div><b>{{ restaurant.name }}</b></div>
-              <div @click="facetClicked(restaurant.cuisine, 'cuisine')" class="text-clickable"><i class="fa fa-cutlery" aria-hidden="true"></i> {{ restaurant.cuisine }}</div>
-              <div>{{ restaurant.address.building + ', ' + restaurant.address.street }}</div>
-              <div>
-                  <span @click="facetClicked(restaurant.borough, 'borough')" class="text-clickable">{{ restaurant.borough }}</span>
-                  , New York
-                  <span @click="facetClicked(restaurant.address.zipcode, 'zipcode')" class="text-clickable">{{ restaurant.address.zipcode }}</span>
-              </div>
-              <div>United States</div>
+            <div v-for="product in all.restaurants" class="restaurant-card">
+              <div><b>{{ product.data.original_primary_key}}</b></div>
+              <div><b @click="facetClicked(product.data.brand_alpha, 'borough')" class="text-clickable">{{ product.data.brand_alpha}}</b></div>
+              <!--<div><b>{{ product.data.brand_alpha}}</b></div>-->
+              <div><img width="80" height="80" :src="product.data.primary_picture"/></div>
+              <!--<div><b>{{ product.data.name }}</b></div>-->
+              <div @click="facetClicked(product.data.primary_category_id, 'cuisine')" class="text-clickable"><!--<i class="fa fa-cutlery" aria-hidden="true"></i>--> {{ product.data.name }}</div>
             </div>
           </div>
 
@@ -98,8 +111,8 @@
       </div>
     </script>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.5.13/vue.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.17.1/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@0.21.0/dist/axios.min.js"></script>
     <script src="app.js"></script>
 
   </body>

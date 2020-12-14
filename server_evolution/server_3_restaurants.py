@@ -2,8 +2,10 @@ from flask import Flask, request, jsonify
 from pymongo import MongoClient
 
 app = Flask(__name__, static_folder='../client')
-client = MongoClient('localhost:27017')
-db = client.test
+client = MongoClient(host="localhost", port=27017)
+db_auth = client.admin
+db_auth.authenticate("admin", "secret")
+db = client.opendata
 API_ENDPOINT = '/api/v1'
 
 def _get_array_param(param):
@@ -20,23 +22,26 @@ def restaurants():
 
     # filters
     search = request.args.get('search', '')
-    boroughs = _get_array_param(request.args.get('boroughs', ''))
-    cuisines = _get_array_param(request.args.get('cuisines', ''))
-    zipcode = _get_array_param(request.args.get('zipcodes', ''))
+    brands = _get_array_param(request.args.get('boroughs', ''))
+    primary_category_ids = _get_array_param(request.args.get('cuisines', ''))
+    secondary_category_ids = _get_array_param(request.args.get('zipcodes', ''))
 
     find = {}
     if search:
         find['$text'] = {'$search': search}
-    if boroughs:
-        find['borough'] = {'$in': boroughs}
-    if cuisines:
-        find['cuisine'] = {'$in': cuisines}
-    if zipcode:
-        find['address.zipcode'] = {'$in': zipcode}
+    if brands:
+        # boroughs
+        find['data.brand_alpha'] = {'$in': brands}
+    if primary_category_ids:
+        # cuisines
+        find['data.primary_category_id'] = {'$in': primary_category_ids}
+    if secondary_category_ids:
+        # address.zipcode
+        find['data.secondary_category_id'] = {'$in': secondary_category_ids}
 
     response = {
-        'restaurants': list(db.restaurants.find(find).skip(skip).limit(limit)),
-        'count': db.restaurants.find(find).count()
+        'restaurants': list(db.product.find(find).skip(skip).limit(limit)),
+        'count': db.product.find(find).count()
     }
 
     for restaurant in response['restaurants']:  # remove _id, is an ObjectId and is not serializable
